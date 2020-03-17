@@ -1,0 +1,198 @@
+### Mysql索引数据结构详解
+> 索引是帮助Mysql高效获取数据的排好序的数据结构
+
+> 数据库系统还维护着根据满足特定查找算法的数据结构，这些数据结构以某种方式引用或指向数据，这样就可以就可以在数据结构上实现高级查找算法，这些数据结构就称为索引
+
+> 在多个字段的组合索引中，Mysql遵循最左前缀原理，即索引会从第一个字段中开始查询，中间不能跳过，必须遵循123原则
+
+
+* 索引数据结构
+- 二叉树: 采有树状结构，左大右小，不适合单边有序增长数据，会造成一条右直链表，存储为Map形式，key为数据值，value是数据文件的地址指针
+
+ - 红黑树: 采用树状结构，也称为二叉平衡树，在插入的单边高度大于3的时候，会内部自旋平衡单边增长大于3次的数据，查询速度比二叉树快，但是会在频繁插入过程中，自旋性能消耗大，维护复杂，在存储大数据量和千万级别的表的情况下，树的高度不可控，会造成频繁的I/O操作，树的高度可能达到20以上
+
+ - Hash表：采用map形式，key为数据的Hash值，查询速度快，但是不支持范围，模糊查询等
+
+ - B-Tree：采用树状结构，在基于红黑树改造，叶节点具有相同的深度，叶节点的指针为空，所有索引元素不重复，节点中的数据索引从左到右递增排列，在页节点中横向存储更多的节点 ，若叶节点大小默认16K，则map中value中大于16kb的 则需要重新新增节点，因此这种情况下树高度叶会不可控，16Kb是为了快速内存操作，不宜过大，节点可存放数量:(索引元素大小8b+6B指针连接)/16Kb，三层树结构可存放：1170*1170*16
+ - B+Tree(B-Tree变种)：分为叶子节点和非叶子节点，非叶子节点不存储date，只存储索引(冗余)，可以存放更多的索引，叶子节点包含所有索引字段，叶子节点用指针连接，相当于链表的Next指向下一个节点数据，提高区间访问的性能，适用于存大数据量的表，一般书的高度为2-4
+
+> MylSAM存储引擎索引实现
+
+* MylSAM索引文件和数据文件是分离的(非聚集)
+- 数据存储文件有三个(.frm / .MYD / .MYI)
+- .frm：存储表结构
+- .MYD：存储表信息
+- .MYI：存储表索引信息
+- 查找流程：首先去MYI 查找数据所在的索引节点，快速定位所在节点获取到地址指针，然后去MYD 文件中，通过地址指针找到对应的行信息，是非聚集索引
+
+> InnoDB存储引擎索引实现
+
+* InnoDB索引实现(聚集)
+ - 表数据文件本身就是按照B+Tree组织的一个索引结构文件
+ - 聚集索引 - 叶节点包含了完整的数据记录，即主键索引，信息和索引主键保存一起
+ - 为啥InnoDB表必须有主键，并且推荐使用整形自增主键?因为B+Tree不能重复，若不能找到主键，mysql则会默认生成一个uid主键，推荐主键为整形自增是因为需要比对大小生成索引，递增是为了避免后面新增的索引比较小，导致已排满的索引节点，引发平衡自旋，增加了树高度，造成高度不可控风险
+ - 为什么非主键索引结构叶子节点存储的是主键值?(为了一致性和节省存储空间，防止维护过长，导致事务问题等)
+ - 聚合索引结构：mysql会按字段顺序依次比较大小，以此生成B-Tree节点树
+
+* 数据存储文件有两个(.frm / .ibd)
+  - .frm：存储表结构
+  - .ibd：存储表信息和表索引，二合一，表信息直接保存为B+Tree索引结构中对应节点的data
+  - 查询流程：
+
+
+### Mysql执行计划与索引详解
+> explain: mysql的sql 执行计划
+
+* explain中的列
+| 属性 | 说明 |
+|---|---|
+| id | 一个id对应一个select语句，代表语句出现的顺序，值越大的先执行，若序号一样，则从上到下依次执行 |
+| select_type | 表示当前select对应的查询是简单查询还是复杂查询 |
+| table | 当前id ->select语句中的表名 |
+| partitions |  |
+| type | 用于表示关联类型或访问类型，即MySql决定如何查找表中的行，查找数据行记录的大概范围 |
+| possible_keys |  |
+| key |  |
+| key_len |  |
+| ref |  |
+| rows |  |
+| filtered |  |
+| Extra |  |
+
+
+### SQL索引优化实战(一)
+### SQL索引优化实战(二)
+### 深入理解Mysql锁与事务隔离级别
+### Mysql MVCC底层原理详解
+### Nginx 核心模块与配置实践
+### Nginx 生产环境常规应用
+### Tomcat生产环境应用
+#### Tomcat各核心组件认知
+* Tomcat架构说明
+> Tomcat是一个基于JAVA的WEB容器，其实现了JAVA EE中的 Servlet 与 jsp 规范，与Nginx apache 服务器不同在于一般用于动态请求处理，不支持反向代理。在架构设计上采用面向组件的方式设计。即整体功能是通过组件的方式拼装完成。另外每个组件都可以被替换以保证灵活性
+
+* Tomcat各核心组件及其关系
+ - Server: 最顶层组件，唯一的，不能变更和修改配置，相当于服务器
+ - Service：相当于具体服务，可以有多个
+ - Connector：Service下面的连接器组件，可以有多个，是Tomcat对外的端口8080等，用于接收请求，并返回给上级Service，再由Service交给Engine组件处理
+    - 8005端口：用于关闭tomcat的端口号，执行shutdown命令
+    - 8443端口：默认的https的端口号
+ - Engine：Service下面的请求处理分发引擎，用于处理Connector的请求
+ - Host：根据域名配置分配请求，默认为localhost，可以使用Engin指定
+ - Context：指的是域名后面的请求，一个Context相当于一个应用上下文，基于path区分，用户不能单独访问文件，必须带有path或者默认path的ROOT文件
+
+![Tomcat各组件及其关系](/img/tomcat.png)
+
+#### server.xml配置详解
+~~~~
+<?xml version="1.0" encoding="UTF-8"?>
+
+# root元素：顶级配置
+# 8005为tomcat关闭命令，用法$：telent 127.0.0.1 8005
+<Server port="8005" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.AprLifecycleListener" SSLEngine="on" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.mbeans.GlobalResourcesLifecycleListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+
+  # 具体服务
+  # 将多个Connector和一个Engine组合成一个服务，可以配置多个服务
+  <Service name="Catalina">
+
+    # 端口连接器，用于接收 指定协议下的连接，并交由引擎处理，默认8080
+    <Connector port="8080" protocol="HTTP/1.1"
+               connectionTimeout="20000"
+               redirectPort="8443" />
+
+    # https端口协议
+    <Connector port="8009" protocol="AJP/1.3" redirectPort="8443" />
+
+    # 请求分发器引擎
+    <Engine name="Catalina" defaultHost="localhost">
+
+      # 分发请求的host配置
+      <Host name="localhost"  appBase="webapps" unpackWARs="true" autoDeploy="true">
+
+
+        <Context path="/order" docBase="order" reloadable=""/>
+        # 日志输出
+        <Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"
+               prefix="localhost_access_log" suffix=".txt"
+               pattern="%h %l %u %t &quot;%r&quot; %s %b" />
+
+      </Host>
+    </Engine>
+  </Service>
+</Server>
+
+~~~~
+
+
+* Connector属性详解
+  -	port：指定服务器端要创建的端口号
+  -	protocol：监听的协议，默认是http/1.1，可以指定3种IO模型类名，分为BIO(阻塞模型)，NIO(同步非阻塞模型)，AIO(基于事件异步非阻塞模型)，版本8.0中已移除BIO，默认为7.0新增的NIO
+  -	minThread：服务器启动时创建的处理请求的线程数，建议200
+  -	maxThread：最大可以创建的处理请求的线程数，建议调大1000
+  -	enableLookups：如果为true，则可以通过调用request.getRemoteHost()进行DNS查询来得到远程客户端的实际主机名，若为false则不进行DNS查询，而是返回其ip地址
+  -	redirectPort：指定服务器正在处理http请求时收到了一个SSL传输请求后重定向的端口号
+  -	acceptCount：指定当所有可以使用的处理请求的线程数都被使用时，可以放到处理队列中的请求数，超过这个数的请求将不予处理，应该比maxThread小
+  -	connectionTimeout：指定超时的时间数(以毫秒为单位)，若tomcat应答时连接数过多，会将超出的请求放在应答等待队列中，这个等待时间就是connectionTimeout
+  -	SSLEnabled：是否开启 sll 验证，在Https 访问时需要开启。
+
+* Host属性详解
+> 虚拟机站点，Connector下面可以有多个
+  - name：域名配置，默认localhost
+  - appBase：指定站点的根目录，可以是相对路径和绝对路径，默认webapps
+  - unpackWARs: 是否自动解压war包，默认true
+  - autoDeploy: 是否自动部署，默认true
+
+* Context属性详解
+> 若Host没有指定，则由根目录文件夹路径指定path为Context上下文
+ - docBase: 站点目类文件夹名
+ - path：路径名称
+ - reloadable：是否可以重新加载，默认true
+
+* Value属性详解
+> 用于日志输出
+  - className="org.apache.catalina.valves.AccessLogValve"
+  - directory：输出的文件夹，默认 logs
+  - prefix：日志文件名，默认localhost_access_log
+  - suffix：日志文件后缀名，默认txt格式
+  - pattern：日志输出格式 "%h %l %u %t &quot;%r&quot; %s %b"
+
+
+#### 自动部署脚本编写
+* Tomcat的启动过程
+  - 1.复制War包至Tomcat webapp目录
+  - 2.执行starut.bat脚本启动
+  - 3.启动过程中war包会自动解压装载
+
+
+### Tomcat网络通信模型源码剖析
+#### Tomcat支持四种线程模型介绍
+> IO是指为数据传输所提供的输入输出流，其输入输出对象可以是：文件、网络服务、内存等
+
+**各IO 简单说明:**
+| IO模型 | 描述 |
+| :----- | :----- |
+| BIO | 同步阻塞式IO，即Tomcat传统的JAVA.IO进行操作。该模式下每个请求会创建一个线程，性能开销大，不适合高并发，Tomcat 8的时候已经淘汰了 |
+| NIO | 同步非阻塞式IO，JKD1.4之后实现的新IO。该模式基于多路复用选择器检测连接状态在同步通知线程处理，从而达到非阻赛的目的，比BIOg更能支持并发性能，tomcat 8之后默认采用该模式 |
+| APR | 全称是 Apache Portable Runtime/Apache可移植运行库)，是Apache HTTP服务器的支持库。可以简单地理解为，Tomcat将以JNI的形式调用Apache HTTP服务器的核心动态链接库来处理文件读取或网络传输操作。使用需要编译安装APR 库 |
+| AIO | 异步非阻赛IO，JDK1.7后支持，不需要多路复用选择器，而是请求处理线程执行完成 进行回调通知，以继续执行后续操作，Tomcat 8之后支持 |
+
+**使用指定IO模型的配置方式:**
+配置 server.xml 文件当中的 <Connector  protocol="HTTP/1.1">   修改即可。
+默认配置 8.0  protocol=“HTTP/1.1” 8.0 之前是 BIO 8.0 之后是NIO
+**BIO**
+protocol="org.apache.coyote.http11.Http11Protocol"
+**NIO**
+protocol="org.apache.coyote.http11.Http11NioProtocol"
+**AIO**
+protocol="org.apache.coyote.http11.Http11Nio2Protocol"
+**APR**
+protocol="org.apache.coyote.http11.Http11AprProtocol"
+
+#### Tomcat中BIO、NIO实现过程源码解析
+#### Tomcat中Connector 并发参数解读
+#### Tomcat类加载机制源码解析
